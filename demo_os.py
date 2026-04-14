@@ -161,12 +161,6 @@ parser.add_argument('--nodes-backend', default='auto', choices=['auto', 'npy', '
                     help='node loading backend: auto prefers packed h5 when available')
 parser.add_argument('--nodes-h5-path', default='', type=str,
                     help='packed nodes h5 path, default: <data>/ben_slico_nodes_seg*_patch*.h5')
-parser.add_argument('--nodes-cache-budget-mb', default=0, type=int,
-                    help='in-memory LRU cache budget for nodes (MB), 0 disables cache')
-parser.add_argument('--nodes-cache-budget-mb-val', default=0, type=int,
-                    help='val nodes cache budget (MB), default 0 to avoid memory growth')
-parser.add_argument('--nodes-cache-allow-workers', action='store_true',
-                    help='allow per-worker nodes cache (risk: memory multiplies by num_workers)')
 
 # ===============================
 # main function
@@ -198,8 +192,6 @@ def main_os():
         nodes_dir=args.nodes_dir_train if args.nodes_dir_train else None,
         nodes_backend=args.nodes_backend,
         nodes_h5_path=args.nodes_h5_path if args.nodes_h5_path else None,
-        nodes_cache_budget_mb=args.nodes_cache_budget_mb,
-        nodes_cache_allow_workers=args.nodes_cache_allow_workers,
     )
 
     val_dataset = BEN10Dataset(
@@ -214,8 +206,6 @@ def main_os():
         nodes_dir=args.nodes_dir_val if args.nodes_dir_val else None,
         nodes_backend=args.nodes_backend,
         nodes_h5_path=args.nodes_h5_path if args.nodes_h5_path else None,
-        nodes_cache_budget_mb=args.nodes_cache_budget_mb_val,
-        nodes_cache_allow_workers=args.nodes_cache_allow_workers,
     )
 
     # ============ Model ============

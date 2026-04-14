@@ -1,7 +1,6 @@
 import os
 import pickle
 import random
-from collections import OrderedDict
 
 import h5py
 import numpy as np
@@ -40,8 +39,6 @@ class BEN10Dataset(data.Dataset):
         nodes_dir=None,
         nodes_backend="auto",
         nodes_h5_path=None,
-        nodes_cache_budget_mb=0,
-        nodes_cache_allow_workers=False,
     ):
         self.root = root
         self.split = split
@@ -107,71 +104,11 @@ class BEN10Dataset(data.Dataset):
                 "Please generate it with pack_ben_slico_nodes_h5.py."
             )
 
-        # Budgeted LRU cache for nodes (in-memory, hard cap with eviction).
-        # By default this cache is disabled in DataLoader workers to avoid memory blow-up.
-        self.nodes_cache_budget_bytes = int(max(0, nodes_cache_budget_mb) * 1024 * 1024)
-        self.nodes_cache_allow_workers = bool(nodes_cache_allow_workers)
-        self.nodes_cache = OrderedDict()
-        self.nodes_cache_bytes = 0
-        self._nodes_cache_runtime_enabled = None
-
         print(f"[BEN10Dataset-HDF5] {split}: {len(self.valid_indices)} samples loaded.")
         print(f"[BEN10Dataset-HDF5] {split}: nodes dir = {self.nodes_dir}")
         print(f"[BEN10Dataset-HDF5] {split}: nodes backend = {self.nodes_backend}")
         if self.nodes_backend == "h5":
             print(f"[BEN10Dataset-HDF5] {split}: nodes h5 = {self.nodes_h5_path}")
-        print(
-            f"[BEN10Dataset-HDF5] {split}: nodes cache budget = "
-            f"{self.nodes_cache_budget_bytes / 1024 / 1024:.1f} MB "
-            f"(allow_workers={self.nodes_cache_allow_workers})"
-        )
-
-    def _is_nodes_cache_enabled(self):
-        if self._nodes_cache_runtime_enabled is not None:
-            return self._nodes_cache_runtime_enabled
-
-        if self.nodes_cache_budget_bytes <= 0:
-            self._nodes_cache_runtime_enabled = False
-            return False
-
-        worker_info = torch.utils.data.get_worker_info()
-        if worker_info is not None and not self.nodes_cache_allow_workers:
-            self._nodes_cache_runtime_enabled = False
-            return False
-
-        self._nodes_cache_runtime_enabled = True
-        return True
-
-    def _cache_get(self, key):
-        arr = self.nodes_cache.get(key, None)
-        if arr is None:
-            return None
-        self.nodes_cache.move_to_end(key, last=True)
-        return arr
-
-    def _cache_put(self, key, arr):
-        if not self._is_nodes_cache_enabled():
-            return
-        if arr is None:
-            return
-
-        arr_nbytes = int(arr.nbytes)
-        if arr_nbytes > self.nodes_cache_budget_bytes:
-            return
-
-        old = self.nodes_cache.pop(key, None)
-        if old is not None:
-            self.nodes_cache_bytes -= int(old.nbytes)
-
-        while (
-            self.nodes_cache
-            and self.nodes_cache_bytes + arr_nbytes > self.nodes_cache_budget_bytes
-        ):
-            _, evicted = self.nodes_cache.popitem(last=False)
-            self.nodes_cache_bytes -= int(evicted.nbytes)
-
-        self.nodes_cache[key] = arr
-        self.nodes_cache_bytes += arr_nbytes
 
     def __len__(self):
         return len(self.valid_indices)
@@ -214,12 +151,7 @@ class BEN10Dataset(data.Dataset):
                     "Please run precompute_ben_slico_nodes.py first."
                 )
 
-            cache_key = ("npy", node_name)
-            nodes_np = self._cache_get(cache_key) if self._is_nodes_cache_enabled() else None
-            if nodes_np is None:
-                nodes_np = np.load(node_path).astype(np.float32, copy=False)
-                self._cache_put(cache_key, nodes_np)
-
+            nodes_np = np.load(node_path).astype(np.float32, copy=False)
             nodes = torch.from_numpy(nodes_np).float()
         else:
             if self.nodes_h5_file is None:
@@ -245,12 +177,7 @@ class BEN10Dataset(data.Dataset):
                     f"aug={aug_type}, offset={offset}, length={length}"
                 )
 
-            cache_key = ("h5", real_idx, aug_idx)
-            nodes_np = self._cache_get(cache_key) if self._is_nodes_cache_enabled() else None
-            if nodes_np is None:
-                nodes_np = self.nodes_data[offset: offset + length].astype(np.float32, copy=False)
-                self._cache_put(cache_key, nodes_np)
-
+            nodes_np = self.nodes_data[offset: offset + length].astype(np.float32, copy=False)
             nodes = torch.from_numpy(nodes_np).float()
 
         return (fusion, name, [self.inp], nodes), target
