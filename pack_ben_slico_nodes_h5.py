@@ -147,10 +147,11 @@ def pack_ben_nodes_h5(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pack BEN SLICO node .npy files into one HDF5 file.")
-    parser.add_argument("--data-root", type=str, required=True)
-    parser.add_argument("--splits", type=str, nargs="+", default=["train", "val", "test"])
-    parser.add_argument("--num-segments", type=int, default=64)
-    parser.add_argument("--patch-size", type=int, default=16)
+    parser.add_argument("--data-root", type=str, default="/media/sata/xyx/BigEarthNet/dataset")
+    # parser.add_argument("--splits", type=str, nargs="+", default=["train", "val", "test"])
+    parser.add_argument("--splits", type=str, nargs="+", default=["train", "val"])
+    parser.add_argument("--num-segments", type=int, default=32)
+    parser.add_argument("--patch-size", type=int, default=8)
     parser.add_argument(
         "--output-h5",
         type=str,
