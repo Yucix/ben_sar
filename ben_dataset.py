@@ -25,6 +25,40 @@ BAND_STD = torch.tensor([
 ], dtype=torch.float32).view(5, 1, 1)
 
 
+def _resolve_h5_path(root, image_size, h5_path=None):
+    if h5_path:
+        if not os.path.exists(h5_path):
+            raise FileNotFoundError(f"HDF5 file not found: {h5_path}")
+        return h5_path
+
+    expected_path = os.path.join(root, f"ben_10p_clean_622_{image_size}.h5")
+    if os.path.exists(expected_path):
+        return expected_path
+
+    raise FileNotFoundError(
+        f"HDF5 file not found: {expected_path}. "
+        "You can set `h5_path` explicitly."
+    )
+
+
+def _resolve_index_subdir(root, image_size, index_subdir=None):
+    if index_subdir:
+        index_dir = os.path.join(root, index_subdir)
+        if not os.path.isdir(index_dir):
+            raise FileNotFoundError(f"Index directory not found: {index_dir}")
+        return index_subdir
+
+    expected_subdir = f"processed_pt_{image_size}_clean622"
+    expected_dir = os.path.join(root, expected_subdir)
+    if os.path.isdir(expected_dir):
+        return expected_subdir
+
+    raise FileNotFoundError(
+        f"Index directory not found: {expected_dir}. "
+        "You can set `index_subdir` explicitly."
+    )
+
+
 class BEN10Dataset(data.Dataset):
     def __init__(
         self,
@@ -32,23 +66,32 @@ class BEN10Dataset(data.Dataset):
         split="train",
         transform=None,
         inp_name=None,
-        image_size=120,
+        image_size=256,
         max_samples=None,
         num_segments=64,
         patch_size=16,
         nodes_dir=None,
         nodes_backend="auto",
         nodes_h5_path=None,
+        h5_path=None,
+        index_subdir=None,
     ):
         self.root = root
         self.split = split
         self.transform = transform
         self.image_size = image_size
 
-        self.h5_path = os.path.join(root, "ben_10p_clean_622_120.h5")
+        self.h5_path = _resolve_h5_path(root=root, image_size=image_size, h5_path=h5_path)
         self.h5_file = None
 
-        self.index_file = os.path.join(root, "processed_pt_120_clean622", f"{split}.txt")
+        self.index_subdir = _resolve_index_subdir(
+            root=root,
+            image_size=image_size,
+            index_subdir=index_subdir,
+        )
+        self.index_file = os.path.join(root, self.index_subdir, f"{split}.txt")
+        if not os.path.exists(self.index_file):
+            raise FileNotFoundError(f"Split index file not found: {self.index_file}")
         with open(self.index_file, "r", encoding="utf-8") as f:
             self.files = [line.strip() for line in f if line.strip()]
 
@@ -105,6 +148,9 @@ class BEN10Dataset(data.Dataset):
             )
 
         print(f"[BEN10Dataset-HDF5] {split}: {len(self.valid_indices)} samples loaded.")
+        print(f"[BEN10Dataset-HDF5] {split}: image_size arg = {self.image_size}")
+        print(f"[BEN10Dataset-HDF5] {split}: data h5 = {self.h5_path}")
+        print(f"[BEN10Dataset-HDF5] {split}: index dir = {self.index_subdir}")
         print(f"[BEN10Dataset-HDF5] {split}: nodes dir = {self.nodes_dir}")
         print(f"[BEN10Dataset-HDF5] {split}: nodes backend = {self.nodes_backend}")
         if self.nodes_backend == "h5":

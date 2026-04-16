@@ -118,9 +118,15 @@ class TrainingLogger:
 parser = argparse.ArgumentParser(description='OS Dataset Training (Optical + SAR Fusion)')
 parser.add_argument('--data', default=DEFAULT_DATA_PATH, type=str)
 parser.add_argument('--image-size', '-i', default=256, type=int)
+parser.add_argument('--h5-path', default='', type=str,
+                    help='optional override for BEN h5 file path (supports h5 on another disk)')
+parser.add_argument('--index-subdir', default='', type=str,
+                    help='optional override for processed_pt index subdir, e.g. processed_pt_256_clean622')
+parser.add_argument('--embedding-path', default='', type=str,
+                    help='optional override for embedding pkl path')
 parser.add_argument('--device_ids', default=[0], type=int, nargs='+')
 parser.add_argument('-j', '--workers', default=4, type=int)
-parser.add_argument('--prefetch-factor', default=8, type=int,
+parser.add_argument('--prefetch-factor', default=2, type=int,
                     help='DataLoader prefetch_factor when workers > 0')
 parser.add_argument('--val-persistent-workers', action='store_true',
                     help='keep val workers persistent across epochs (default: off for memory stability)')
@@ -167,6 +173,11 @@ parser.add_argument('--nodes-h5-path', default='', type=str,
 # ===============================
 def main_os():
     args = parser.parse_args()
+    embedding_path = args.embedding_path or os.path.join(
+        args.data, "embeddings", "bigearthnet19_glove_word2vec.pkl"
+    )
+    h5_path = args.h5_path if args.h5_path else None
+    index_subdir = args.index_subdir if args.index_subdir else None
 
     global logger
     logger = TrainingLogger(args.log_dir)
@@ -175,6 +186,11 @@ def main_os():
     print(" Optical + SAR Fusion DSDL Training ")
     print("############################################")
     print(f"Data path: {args.data}")
+    print(f"Embedding path: {embedding_path}")
+    if h5_path:
+        print(f"Data h5 override: {h5_path}")
+    if index_subdir:
+        print(f"Index subdir override: {index_subdir}")
     print(f"Log path:  {logger.log_dir}")
     if args.resume:
         print(f"Resume from checkpoint: {args.resume}")
@@ -184,7 +200,7 @@ def main_os():
         root=args.data,
         split="train",
         transform=None,
-        inp_name=DEFAULT_EMBEDDING_PATH,
+        inp_name=embedding_path,
         image_size=args.image_size,
         max_samples=args.train_max_samples,
         num_segments=args.sar_num_segments,
@@ -192,13 +208,15 @@ def main_os():
         nodes_dir=args.nodes_dir_train if args.nodes_dir_train else None,
         nodes_backend=args.nodes_backend,
         nodes_h5_path=args.nodes_h5_path if args.nodes_h5_path else None,
+        h5_path=h5_path,
+        index_subdir=index_subdir,
     )
 
     val_dataset = BEN10Dataset(
         root=args.data,
         split="val",   # 建议这里先用 val，不要先用 test
         transform=None,
-        inp_name=DEFAULT_EMBEDDING_PATH,
+        inp_name=embedding_path,
         image_size=args.image_size,
         max_samples=args.val_max_samples,
         num_segments=args.sar_num_segments,
@@ -206,6 +224,8 @@ def main_os():
         nodes_dir=args.nodes_dir_val if args.nodes_dir_val else None,
         nodes_backend=args.nodes_backend,
         nodes_h5_path=args.nodes_h5_path if args.nodes_h5_path else None,
+        h5_path=h5_path,
+        index_subdir=index_subdir,
     )
 
     # ============ Model ============

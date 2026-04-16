@@ -3,11 +3,13 @@ import json
 import torch
 import numpy as np
 import rasterio
+import torch.nn.functional as F
 from tqdm import tqdm
 import concurrent.futures
 
 ROOT = "/media/sata/xyx/BigEarthNet/dataset"
-OUT_ROOT = os.path.join(ROOT, "processed_pt_120_clean622")
+OUT_ROOT = os.path.join(ROOT, "processed_pt_256_clean622")
+TARGET_SIZE = 256
 
 S1_ROOT = os.path.join(ROOT, "BigEarthNet-S1-v1.0")
 S2_ROOT = os.path.join(ROOT, "BigEarthNet-v1.0")
@@ -100,6 +102,13 @@ def process_single_sample(args):
         optical = load_s2_patch(s2_patch_name)  # [3,H,W]
         sar = load_s1_patch(s1_patch_name)      # [2,H,W]
         image = torch.tensor(np.concatenate([optical, sar], axis=0), dtype=torch.float32)  # [5,H,W]
+        if image.shape[-2:] != (TARGET_SIZE, TARGET_SIZE):
+            image = F.interpolate(
+                image.unsqueeze(0),
+                size=(TARGET_SIZE, TARGET_SIZE),
+                mode="bilinear",
+                align_corners=False,
+            ).squeeze(0)
         label = load_label_from_s1(s1_patch_name)
 
         sample = {

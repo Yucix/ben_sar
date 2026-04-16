@@ -116,8 +116,26 @@ def build_nodes_for_all_views(sar_img_hw2: np.ndarray, num_segments: int, patch_
     return nodes_by_aug
 
 
-def load_split_names(root: str, split: str):
-    index_file = os.path.join(root, "processed_pt_120_clean622", f"{split}.txt")
+def resolve_index_subdir(root: str, image_size: int, index_subdir: str = None) -> str:
+    if index_subdir:
+        index_dir = os.path.join(root, index_subdir)
+        if not os.path.isdir(index_dir):
+            raise FileNotFoundError(f"Index directory not found: {index_dir}")
+        return index_subdir
+
+    expected_subdir = f"processed_pt_{image_size}_clean622"
+    expected_dir = os.path.join(root, expected_subdir)
+    if os.path.isdir(expected_dir):
+        return expected_subdir
+
+    raise FileNotFoundError(
+        f"Index directory not found: {expected_dir}. "
+        "You can set `--index-subdir` explicitly."
+    )
+
+
+def load_split_names(root: str, split: str, index_subdir: str):
+    index_file = os.path.join(root, index_subdir, f"{split}.txt")
     if not os.path.exists(index_file):
         return None
 
@@ -178,8 +196,11 @@ def _worker_process(task: Tuple[int, str]) -> Tuple[int, int]:
 
 def precompute_ben_slico_nodes(
     data_root: str,
-    h5_name: str = "ben_10p_clean_622_120.h5",
+    h5_name: str = "ben_10p_clean_622_256.h5",
+    h5_path: str = None,
     splits=("train", "val"),
+    image_size: int = 256,
+    index_subdir: str = None,
     num_segments: int = 64,
     patch_size: int = 16,
     max_samples: int = 0,
@@ -187,22 +208,31 @@ def precompute_ben_slico_nodes(
     chunksize: int = 32,
     skip_existing: bool = False,
 ):
-    h5_path = os.path.join(data_root, h5_name)
-    if not os.path.exists(h5_path):
-        raise FileNotFoundError(f"HDF5 file not found: {h5_path}")
+    resolved_h5_path = h5_path if h5_path else os.path.join(data_root, h5_name)
+    if not os.path.exists(resolved_h5_path):
+        raise FileNotFoundError(f"HDF5 file not found: {resolved_h5_path}")
+
+    resolved_index_subdir = resolve_index_subdir(
+        root=data_root,
+        image_size=image_size,
+        index_subdir=index_subdir,
+    )
+    print(f"[Precompute] h5 path    : {resolved_h5_path}")
+    print(f"[Precompute] index dir  : {resolved_index_subdir}")
+    print(f"[Precompute] image_size : {image_size}")
 
     for split in splits:
-        names = load_split_names(data_root, split)
+        names = load_split_names(data_root, split, resolved_index_subdir)
         if names is None:
             raise FileNotFoundError(
                 f"Missing index file for split '{split}': "
-                f"{os.path.join(data_root, 'processed_pt_120_clean622', f'{split}.txt')}"
+                f"{os.path.join(data_root, resolved_index_subdir, f'{split}.txt')}"
             )
 
-        with h5py.File(h5_path, "r") as h5f:
+        with h5py.File(resolved_h5_path, "r") as h5f:
             group_key = f"{split}/images"
             if group_key not in h5f:
-                print(f"[Skip] Split '{split}' not found in {h5_path}")
+                print(f"[Skip] Split '{split}' not found in {resolved_h5_path}")
                 continue
 
             images = h5f[group_key]
@@ -244,7 +274,7 @@ def precompute_ben_slico_nodes(
             with ctx.Pool(
                 processes=num_workers,
                 initializer=_worker_init,
-                initargs=(h5_path, split, out_dir, num_segments, patch_size, skip_existing),
+                initargs=(resolved_h5_path, split, out_dir, num_segments, patch_size, skip_existing),
             ) as pool:
                 for m, s in tqdm(
                     pool.imap_unordered(_worker_process, tasks, chunksize=chunksize),
@@ -254,7 +284,7 @@ def precompute_ben_slico_nodes(
                     made += m
                     skipped += s
         else:
-            with h5py.File(h5_path, "r") as h5f:
+            with h5py.File(resolved_h5_path, "r") as h5f:
                 images = h5f[f"{split}/images"]
                 for idx, base_name in tqdm(tasks, desc=f"{split} progress"):
                     m, s = process_one(
@@ -275,10 +305,18 @@ def precompute_ben_slico_nodes(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Precompute BEN SLICO nodes from HDF5.")
     parser.add_argument("--data-root", type=str, default="/media/sata/xyx/BigEarthNet/dataset")
-    parser.add_argument("--h5-name", type=str, default="ben_10p_clean_622_120.h5")
+    parser.add_argument("--h5-name", type=str, default="ben_10p_clean_622_256.h5")
+    parser.add_argument("--h5-path", type=str, default="", help="optional absolute/relative path to BEN HDF5")
     parser.add_argument("--splits", type=str, nargs="+", default=["train", "val"])
+    parser.add_argument("--image-size", type=int, default=256)
+    parser.add_argument(
+        "--index-subdir",
+        type=str,
+        default="",
+        help="optional override, e.g. processed_pt_256_clean622",
+    )
     parser.add_argument("--num-segments", type=int, default=32)
-    parser.add_argument("--patch-size", type=int, default=8)
+    parser.add_argument("--patch-size", type=int, default=16)
     parser.add_argument("--max-samples", type=int, default=0, help="optional cap per split for sanity check")
     parser.add_argument("--num-workers", type=int, default=0, help="parallel workers for preprocessing")
     parser.add_argument("--chunksize", type=int, default=32, help="chunksize for multiprocessing")
@@ -288,7 +326,10 @@ if __name__ == "__main__":
     precompute_ben_slico_nodes(
         data_root=args.data_root,
         h5_name=args.h5_name,
+        h5_path=args.h5_path if args.h5_path else None,
         splits=tuple(args.splits),
+        image_size=args.image_size,
+        index_subdir=args.index_subdir if args.index_subdir else None,
         num_segments=args.num_segments,
         patch_size=args.patch_size,
         max_samples=args.max_samples,

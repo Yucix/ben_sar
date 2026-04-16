@@ -5,8 +5,8 @@ from tqdm import tqdm
 
 # 请确保这里的 ROOT 是你存放数据集的目录
 ROOT = "/media/sata/xyx/BigEarthNet/dataset"
-DATA_DIR = os.path.join(ROOT, "processed_pt_120_clean622") # 指向你的 120 尺寸 pt 文件夹
-H5_PATH = os.path.join(ROOT, "ben_10p_clean_622_120.h5")    # 即将生成的终极 h5 文件
+DATA_DIR = os.path.join(ROOT, "processed_pt_256_clean622") # 指向你的 256 尺寸 pt 文件夹
+H5_PATH = os.path.join(ROOT, "ben_10p_clean_622_256.h5")    # 即将生成的终极 h5 文件
 
 def create_h5():
     # 'w' 模式创建并打开 h5 文件
@@ -24,7 +24,7 @@ def create_h5():
             print(f"开始打包 {split} 集 ({N} 个样本)...")
 
             # 在 h5 中创建数据集，指定 chunks 优化随机读取性能
-            img_ds = h5f.create_dataset(f"{split}/images", shape=(N, 5, 120, 120), dtype='float32', chunks=(1, 5, 120, 120))
+            img_ds = h5f.create_dataset(f"{split}/images", shape=(N, 5, 256, 256), dtype='float32', chunks=(1, 5, 256, 256))
             lbl_ds = h5f.create_dataset(f"{split}/labels", shape=(N, 19), dtype='float32')
 
             # 遍历写入

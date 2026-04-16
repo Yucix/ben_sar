@@ -8,8 +8,26 @@ from tqdm import tqdm
 AUG_TYPES = ("orig", "hflip", "vflip", "rot180")
 
 
-def load_split_names(root, split):
-    index_file = os.path.join(root, "processed_pt_120_clean622", f"{split}.txt")
+def resolve_index_subdir(root, image_size, index_subdir=None):
+    if index_subdir:
+        index_dir = os.path.join(root, index_subdir)
+        if not os.path.isdir(index_dir):
+            raise FileNotFoundError(f"Index directory not found: {index_dir}")
+        return index_subdir
+
+    expected_subdir = f"processed_pt_{image_size}_clean622"
+    expected_dir = os.path.join(root, expected_subdir)
+    if os.path.isdir(expected_dir):
+        return expected_subdir
+
+    raise FileNotFoundError(
+        f"Index directory not found: {expected_dir}. "
+        "You can set `--index-subdir` explicitly."
+    )
+
+
+def load_split_names(root, split, index_subdir):
+    index_file = os.path.join(root, index_subdir, f"{split}.txt")
     if not os.path.exists(index_file):
         return None
     with open(index_file, "r", encoding="utf-8") as f:
@@ -20,8 +38,8 @@ def get_nodes_dir(root, split, num_segments, patch_size):
     return os.path.join(root, split, f"aug_nodes_slico_seg{num_segments}_patch{patch_size}")
 
 
-def pack_split(h5_out, root, split, num_segments, patch_size, compression, max_samples=0):
-    names = load_split_names(root, split)
+def pack_split(h5_out, root, split, index_subdir, num_segments, patch_size, compression, max_samples=0):
+    names = load_split_names(root, split, index_subdir)
     if names is None:
         print(f"[Skip] Missing split index file: {split}")
         return
@@ -117,6 +135,8 @@ def pack_ben_nodes_h5(
     data_root,
     output_h5,
     splits=("train", "val", "test"),
+    image_size=256,
+    index_subdir=None,
     num_segments=64,
     patch_size=16,
     compression="lzf",
@@ -125,6 +145,14 @@ def pack_ben_nodes_h5(
     out_dir = os.path.dirname(output_h5)
     if out_dir:
         os.makedirs(out_dir, exist_ok=True)
+
+    resolved_index_subdir = resolve_index_subdir(
+        root=data_root,
+        image_size=image_size,
+        index_subdir=index_subdir,
+    )
+    print(f"[Pack] index dir  : {resolved_index_subdir}")
+    print(f"[Pack] image_size : {image_size}")
 
     with h5py.File(output_h5, "w") as h5_out:
         h5_out.attrs["num_segments"] = int(num_segments)
@@ -136,6 +164,7 @@ def pack_ben_nodes_h5(
                 h5_out=h5_out,
                 root=data_root,
                 split=split,
+                index_subdir=resolved_index_subdir,
                 num_segments=num_segments,
                 patch_size=patch_size,
                 compression=compression,
@@ -148,17 +177,24 @@ def pack_ben_nodes_h5(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Pack BEN SLICO node .npy files into one HDF5 file.")
     parser.add_argument("--data-root", type=str, default="/media/sata/xyx/BigEarthNet/dataset")
+    parser.add_argument("--image-size", type=int, default=256)
+    parser.add_argument(
+        "--index-subdir",
+        type=str,
+        default="",
+        help="optional override, e.g. processed_pt_256_clean622",
+    )
     # parser.add_argument("--splits", type=str, nargs="+", default=["train", "val", "test"])
     parser.add_argument("--splits", type=str, nargs="+", default=["train", "val"])
-    parser.add_argument("--num-segments", type=int, default=32)
-    parser.add_argument("--patch-size", type=int, default=8)
+    parser.add_argument("--num-segments", type=int, default=64)
+    parser.add_argument("--patch-size", type=int, default=16)
     parser.add_argument(
         "--output-h5",
         type=str,
         default="",
         help="default: <data-root>/ben_slico_nodes_seg{num_segments}_patch{patch_size}.h5",
     )
-    parser.add_argument("--compression", type=str, default="lzf", choices=["lzf", "gzip", "none"])
+    parser.add_argument("--compression", type=str, default="none", choices=["lzf", "gzip", "none"])
     parser.add_argument("--max-samples", type=int, default=0)
     args = parser.parse_args()
 
@@ -171,6 +207,8 @@ if __name__ == "__main__":
         data_root=args.data_root,
         output_h5=output_h5,
         splits=tuple(args.splits),
+        image_size=args.image_size,
+        index_subdir=args.index_subdir if args.index_subdir else None,
         num_segments=args.num_segments,
         patch_size=args.patch_size,
         compression=compression,
