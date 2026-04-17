@@ -189,7 +189,7 @@ class Engine(object):
     def adjust_learning_rate(self, optimizer):
         epoch = self.state['epoch']
         max_epochs = self.state['max_epochs']
-        warmup_epochs = 1  # 设置前 1 个 epoch 为 Warmup 阶段
+        warmup_epochs = 5  # 设置前 5 个 epoch 为 Warmup 阶段
         
         # 第一次调用时，记录每个参数组的初始学习率
         for param_group in optimizer.param_groups:
