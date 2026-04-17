@@ -61,7 +61,7 @@ class Engine(object):
         self.best_metrics = None
 
         self.state.setdefault('use_gpu', torch.cuda.is_available())
-        self.state.setdefault('image_size', 256)
+        self.state.setdefault('image_size', 128)
         self.state.setdefault('batch_size', 32)
         self.state.setdefault('workers', 4)
         self.state.setdefault('device_ids', None)

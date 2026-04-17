@@ -59,6 +59,42 @@ def _resolve_index_subdir(root, image_size, index_subdir=None):
     )
 
 
+def _resolve_default_nodes_dir(root, split, num_segments, patch_size, image_size):
+    preferred_dir = os.path.join(
+        root,
+        split,
+        f"aug_nodes_slico_seg{num_segments}_patch{patch_size}_img{image_size}",
+    )
+    legacy_dir = os.path.join(
+        root,
+        split,
+        f"aug_nodes_slico_seg{num_segments}_patch{patch_size}",
+    )
+
+    if os.path.isdir(preferred_dir):
+        return preferred_dir
+    if os.path.isdir(legacy_dir):
+        return legacy_dir
+    return preferred_dir
+
+
+def _resolve_default_nodes_h5_path(root, num_segments, patch_size, image_size):
+    preferred_h5 = os.path.join(
+        root,
+        f"ben_slico_nodes_seg{num_segments}_patch{patch_size}_img{image_size}.h5",
+    )
+    legacy_h5 = os.path.join(
+        root,
+        f"ben_slico_nodes_seg{num_segments}_patch{patch_size}.h5",
+    )
+
+    if os.path.exists(preferred_h5):
+        return preferred_h5
+    if os.path.exists(legacy_h5):
+        return legacy_h5
+    return preferred_h5
+
+
 class BEN10Dataset(data.Dataset):
     def __init__(
         self,
@@ -66,10 +102,10 @@ class BEN10Dataset(data.Dataset):
         split="train",
         transform=None,
         inp_name=None,
-        image_size=256,
+        image_size=128,
         max_samples=None,
         num_segments=64,
-        patch_size=16,
+        patch_size=8,
         nodes_dir=None,
         nodes_backend="auto",
         nodes_h5_path=None,
@@ -114,10 +150,12 @@ class BEN10Dataset(data.Dataset):
             self.inp = torch.tensor(pickle.load(f), dtype=torch.float32)
 
         if nodes_dir is None:
-            self.nodes_dir = os.path.join(
-                root,
-                split,
-                f"aug_nodes_slico_seg{num_segments}_patch{patch_size}",
+            self.nodes_dir = _resolve_default_nodes_dir(
+                root=root,
+                split=split,
+                num_segments=num_segments,
+                patch_size=patch_size,
+                image_size=image_size,
             )
         else:
             self.nodes_dir = nodes_dir
@@ -125,8 +163,11 @@ class BEN10Dataset(data.Dataset):
         self.aug_types = ("orig", "hflip", "vflip", "rot180")
         self.aug_to_idx = {aug: i for i, aug in enumerate(self.aug_types)}
 
-        default_nodes_h5 = os.path.join(
-            root, f"ben_slico_nodes_seg{num_segments}_patch{patch_size}.h5"
+        default_nodes_h5 = _resolve_default_nodes_h5_path(
+            root=root,
+            num_segments=num_segments,
+            patch_size=patch_size,
+            image_size=image_size,
         )
         self.nodes_h5_path = nodes_h5_path if nodes_h5_path else default_nodes_h5
         self.nodes_h5_file = None

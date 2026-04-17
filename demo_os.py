@@ -6,7 +6,7 @@ import torch.optim
 import csv
 import datetime
 import numpy as np
-import random  
+import random
 
 # 保证 src 模块能被正确导入
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -20,13 +20,9 @@ from models import load_model
 # ===============================
 # 默认路径
 # ===============================
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DEFAULT_DATA_PATH = "/media/sata/xyx/BigEarthNet/dataset"
-DEFAULT_EMBEDDING_PATH = os.path.join(
-    DEFAULT_DATA_PATH, "embeddings", "bigearthnet19_glove_word2vec.pkl"
-)
 DEFAULT_CHECKPOINT_PATH = "/media/sata/xyx/BigEarthNet/checkpoints/ben_sar/"
-DEFAULT_LOG_PATH = os.path.join(project_root, "/media/sata/xyx/BigEarthNet/logs/ben_sar/")
+DEFAULT_LOG_PATH = "/media/sata/xyx/BigEarthNet/logs/ben_sar/"
 
 # 保证实验可复现的随机种子
 def seed_everything(seed=42):
@@ -115,64 +111,123 @@ class TrainingLogger:
 # ===============================
 # 参数解析
 # ===============================
-parser = argparse.ArgumentParser(description='OS Dataset Training (Optical + SAR Fusion)')
-parser.add_argument('--data', default=DEFAULT_DATA_PATH, type=str)
-parser.add_argument('--image-size', '-i', default=256, type=int)
-parser.add_argument('--h5-path', default='', type=str,
-                    help='optional override for BEN h5 file path (supports h5 on another disk)')
-parser.add_argument('--index-subdir', default='', type=str,
-                    help='optional override for processed_pt index subdir, e.g. processed_pt_256_clean622')
-parser.add_argument('--embedding-path', default='', type=str,
-                    help='optional override for embedding pkl path')
-parser.add_argument('--device_ids', default=[0], type=int, nargs='+')
-parser.add_argument('-j', '--workers', default=4, type=int)
-parser.add_argument('--prefetch-factor', default=2, type=int,
-                    help='DataLoader prefetch_factor when workers > 0')
-parser.add_argument('--val-persistent-workers', action='store_true',
-                    help='keep val workers persistent across epochs (default: off for memory stability)')
-parser.add_argument('--epochs', default=100, type=int)
-parser.add_argument('--epoch_step', default=[30, 60], type=int, nargs='+')
-parser.add_argument('--start-epoch', default=0, type=int)
-parser.add_argument('-b', '--batch-size', default=32, type=int)
-parser.add_argument('--lr', default=0.001, type=float)
-parser.add_argument('--lrp', default=0.1, type=float)
-parser.add_argument('--momentum', default=0.9, type=float)
-parser.add_argument('--weight-decay', default=1e-4, type=float)
-parser.add_argument('-p', '--print-freq', default=0, type=int)
-parser.add_argument('--resume', default='', type=str, help='path to checkpoint to resume from')
-parser.add_argument('--evaluate', action='store_true')
-parser.add_argument('--lambd', default=0.001, type=float)
-parser.add_argument('--beta', default=0.005, type=float)
-parser.add_argument('--log-dir', default=DEFAULT_LOG_PATH, type=str)
-parser.add_argument('--early-stop', action='store_true',
-                    help='enable early stopping based on validation Micro-F1')
-parser.add_argument('--patience', default=15, type=int,
-                    help='number of epochs with no improvement before stopping')
-parser.add_argument('--train-max-samples', default=0, type=int,
-                    help='for quick check: use only first N train samples')
-parser.add_argument('--val-max-samples', default=0, type=int,
-                    help='for quick check: use only first N val/test samples')
-parser.add_argument('--sar-patch-size', default=16, type=int)
-parser.add_argument('--sar-embed-dim', default=64, type=int)
-parser.add_argument('--sar-num-vig-blocks', default=2, type=int)
-parser.add_argument('--sar-num-segments', default=64, type=int)
-parser.add_argument('--sar-num-edges', default=9, type=int)
-parser.add_argument('--sar-head-num', default=1, type=int)
-parser.add_argument('--sar-drop-path', default=0.05, type=float)
-parser.add_argument('--nodes-dir-train', default='', type=str,
-                    help='optional override for train nodes directory')
-parser.add_argument('--nodes-dir-val', default='', type=str,
-                    help='optional override for val nodes directory')
-parser.add_argument('--nodes-backend', default='auto', choices=['auto', 'npy', 'h5'],
-                    help='node loading backend: auto prefers packed h5 when available')
-parser.add_argument('--nodes-h5-path', default='', type=str,
-                    help='packed nodes h5 path, default: <data>/ben_slico_nodes_seg*_patch*.h5')
+def build_parser():
+    parser = argparse.ArgumentParser(description='OS Dataset Training (Optical + SAR Fusion)')
+
+    data_group = parser.add_argument_group('Data')
+    data_group.add_argument('--data', default=DEFAULT_DATA_PATH, type=str)
+    data_group.add_argument('--image-size', '-i', default=128, type=int)
+    data_group.add_argument(
+        '--h5-path',
+        default='',
+        type=str,
+        help='optional override for BEN h5 file path (supports h5 on another disk)',
+    )
+    data_group.add_argument(
+        '--index-subdir',
+        default='',
+        type=str,
+        help='optional override for processed_pt index subdir, e.g. processed_pt_<image_size>_clean622',
+    )
+    data_group.add_argument(
+        '--embedding-path',
+        default='',
+        type=str,
+        help='optional override for embedding pkl path',
+    )
+    data_group.add_argument(
+        '--train-max-samples',
+        default=0,
+        type=int,
+        help='for quick check: use only first N train samples',
+    )
+    data_group.add_argument(
+        '--val-max-samples',
+        default=0,
+        type=int,
+        help='for quick check: use only first N val/test samples',
+    )
+
+    train_group = parser.add_argument_group('Training')
+    train_group.add_argument('--device_ids', '--device-ids', default=[0], type=int, nargs='+')
+    train_group.add_argument('-j', '--workers', default=4, type=int)
+    train_group.add_argument(
+        '--prefetch-factor',
+        default=2,
+        type=int,
+        help='DataLoader prefetch_factor when workers > 0',
+    )
+    train_group.add_argument(
+        '--val-persistent-workers',
+        action='store_true',
+        help='keep val workers persistent across epochs (default: off for memory stability)',
+    )
+    train_group.add_argument('--epochs', default=100, type=int)
+    train_group.add_argument('-b', '--batch-size', default=32, type=int)
+    train_group.add_argument('--lr', default=0.001, type=float)
+    train_group.add_argument('--lrp', default=0.1, type=float)
+    train_group.add_argument('--weight-decay', default=1e-4, type=float)
+    train_group.add_argument('--resume', default='', type=str, help='path to checkpoint to resume from')
+    train_group.add_argument('--evaluate', action='store_true')
+    train_group.add_argument('--log-dir', default=DEFAULT_LOG_PATH, type=str)
+    train_group.add_argument(
+        '--early-stop',
+        action='store_true',
+        help='enable early stopping based on validation Micro-F1',
+    )
+    train_group.add_argument(
+        '--patience',
+        default=15,
+        type=int,
+        help='number of epochs with no improvement before stopping',
+    )
+
+    loss_group = parser.add_argument_group('Loss')
+    loss_group.add_argument('--lambd', default=0.001, type=float)
+    loss_group.add_argument('--beta', default=0.005, type=float)
+
+    sar_group = parser.add_argument_group('SAR Backbone')
+    sar_group.add_argument('--sar-patch-size', default=8, type=int)
+    sar_group.add_argument('--sar-embed-dim', default=64, type=int)
+    sar_group.add_argument('--sar-num-vig-blocks', default=2, type=int)
+    sar_group.add_argument('--sar-num-segments', default=64, type=int)
+    sar_group.add_argument('--sar-num-edges', default=9, type=int)
+    sar_group.add_argument('--sar-head-num', default=1, type=int)
+    sar_group.add_argument('--sar-drop-path', default=0.05, type=float)
+
+    node_group = parser.add_argument_group('Nodes')
+    node_group.add_argument(
+        '--nodes-dir-train',
+        default='',
+        type=str,
+        help='optional override for train nodes directory',
+    )
+    node_group.add_argument(
+        '--nodes-dir-val',
+        default='',
+        type=str,
+        help='optional override for val nodes directory',
+    )
+    node_group.add_argument(
+        '--nodes-backend',
+        default='auto',
+        choices=['auto', 'npy', 'h5'],
+        help='node loading backend: auto prefers packed h5 when available',
+    )
+    node_group.add_argument(
+        '--nodes-h5-path',
+        default='',
+        type=str,
+        help='packed nodes h5 path, default: <data>/ben_slico_nodes_seg*_patch*_img<image_size>.h5',
+    )
+
+    return parser
 
 # ===============================
 # main function
 # ===============================
 def main_os():
-    args = parser.parse_args()
+    args = build_parser().parse_args()
     embedding_path = args.embedding_path or os.path.join(
         args.data, "embeddings", "bigearthnet19_glove_word2vec.pkl"
     )
@@ -262,7 +317,6 @@ def main_os():
         'workers': args.workers,
         'prefetch_factor': args.prefetch_factor,
         'val_persistent_workers': args.val_persistent_workers,
-        'epoch_step': args.epoch_step,
         'lr': args.lr,
         'device_ids': args.device_ids,
         'dataset': 'os',

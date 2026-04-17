@@ -34,7 +34,7 @@ class SARViGBranch(nn.Module):
 
     def __init__(
         self,
-        patch_size=16,
+        patch_size=8,
         in_channels=2,
         embed_dim=64,
         num_vig_blocks=2,
@@ -105,7 +105,7 @@ class DSDL(nn.Module):
         num_classes,
         alpha,
         in_channel=300,
-        sar_patch_size=16,
+        sar_patch_size=8,
         sar_embed_dim=64,
         sar_num_vig_blocks=2,
         sar_num_segments=64,
@@ -206,7 +206,7 @@ def load_model(
     alpha,
     pretrained=True,
     in_channel=300,
-    sar_patch_size=16,
+    sar_patch_size=8,
     sar_embed_dim=64,
     sar_num_vig_blocks=2,
     sar_num_segments=64,

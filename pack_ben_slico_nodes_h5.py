@@ -1,14 +1,24 @@
 import argparse
 import os
+from typing import Optional, Sequence
 
 import h5py
 import numpy as np
 from tqdm import tqdm
 
+DATA_ROOT_DEFAULT = "/media/sata/xyx/BigEarthNet/dataset"
 AUG_TYPES = ("orig", "hflip", "vflip", "rot180")
 
 
-def resolve_index_subdir(root, image_size, index_subdir=None):
+def build_nodes_dir_name(num_segments: int, patch_size: int, image_size: int) -> str:
+    return f"aug_nodes_slico_seg{num_segments}_patch{patch_size}_img{image_size}"
+
+
+def build_nodes_h5_name(num_segments: int, patch_size: int, image_size: int) -> str:
+    return f"ben_slico_nodes_seg{num_segments}_patch{patch_size}_img{image_size}.h5"
+
+
+def resolve_index_subdir(root: str, image_size: int, index_subdir: Optional[str] = None) -> str:
     if index_subdir:
         index_dir = os.path.join(root, index_subdir)
         if not os.path.isdir(index_dir):
@@ -22,11 +32,11 @@ def resolve_index_subdir(root, image_size, index_subdir=None):
 
     raise FileNotFoundError(
         f"Index directory not found: {expected_dir}. "
-        "You can set `--index-subdir` explicitly."
+        "You can set --index-subdir explicitly."
     )
 
 
-def load_split_names(root, split, index_subdir):
+def load_split_names(root: str, split: str, index_subdir: str):
     index_file = os.path.join(root, index_subdir, f"{split}.txt")
     if not os.path.exists(index_file):
         return None
@@ -34,11 +44,30 @@ def load_split_names(root, split, index_subdir):
         return [line.strip() for line in f if line.strip()]
 
 
-def get_nodes_dir(root, split, num_segments, patch_size):
-    return os.path.join(root, split, f"aug_nodes_slico_seg{num_segments}_patch{patch_size}")
+def get_nodes_dir(
+    root: str,
+    split: str,
+    num_segments: int,
+    patch_size: int,
+    image_size: int,
+    nodes_dir_name: Optional[str] = None,
+) -> str:
+    dir_name = nodes_dir_name if nodes_dir_name else build_nodes_dir_name(num_segments, patch_size, image_size)
+    return os.path.join(root, split, dir_name)
 
 
-def pack_split(h5_out, root, split, index_subdir, num_segments, patch_size, compression, max_samples=0):
+def pack_split(
+    h5_out,
+    root,
+    split,
+    index_subdir,
+    num_segments: int,
+    patch_size: int,
+    image_size: int,
+    nodes_dir_name,
+    compression,
+    max_samples=0,
+):
     names = load_split_names(root, split, index_subdir)
     if names is None:
         print(f"[Skip] Missing split index file: {split}")
@@ -52,7 +81,14 @@ def pack_split(h5_out, root, split, index_subdir, num_segments, patch_size, comp
         print(f"[Skip] Empty split: {split}")
         return
 
-    nodes_dir = get_nodes_dir(root, split, num_segments, patch_size)
+    nodes_dir = get_nodes_dir(
+        root=root,
+        split=split,
+        num_segments=num_segments,
+        patch_size=patch_size,
+        image_size=image_size,
+        nodes_dir_name=nodes_dir_name,
+    )
     if not os.path.isdir(nodes_dir):
         raise FileNotFoundError(
             f"Nodes directory not found: {nodes_dir}. "
@@ -132,15 +168,16 @@ def pack_split(h5_out, root, split, index_subdir, num_segments, patch_size, comp
 
 
 def pack_ben_nodes_h5(
-    data_root,
-    output_h5,
-    splits=("train", "val", "test"),
-    image_size=256,
-    index_subdir=None,
-    num_segments=64,
-    patch_size=16,
-    compression="lzf",
-    max_samples=0,
+    data_root: str,
+    output_h5: str,
+    image_size: int = 128,
+    num_segments: int = 64,
+    patch_size: int = 8,
+    splits: Sequence[str] = ("train", "val"),
+    index_subdir: Optional[str] = None,
+    nodes_dir_name: Optional[str] = None,
+    compression: Optional[str] = "lzf",
+    max_samples: int = 0,
 ):
     out_dir = os.path.dirname(output_h5)
     if out_dir:
@@ -151,12 +188,22 @@ def pack_ben_nodes_h5(
         image_size=image_size,
         index_subdir=index_subdir,
     )
+    resolved_nodes_dir_name = (
+        nodes_dir_name if nodes_dir_name else build_nodes_dir_name(num_segments, patch_size, image_size)
+    )
+
     print(f"[Pack] index dir  : {resolved_index_subdir}")
-    print(f"[Pack] image_size : {image_size}")
+    print(
+        "[Pack] spec       : "
+        f"seg={num_segments}, patch={patch_size}, img={image_size}"
+    )
+    print(f"[Pack] nodes dir  : {resolved_nodes_dir_name}")
+    print(f"[Pack] output h5  : {output_h5}")
 
     with h5py.File(output_h5, "w") as h5_out:
         h5_out.attrs["num_segments"] = int(num_segments)
         h5_out.attrs["patch_size"] = int(patch_size)
+        h5_out.attrs["image_size"] = int(image_size)
         h5_out.attrs["aug_types"] = np.asarray(AUG_TYPES, dtype="S16")
 
         for split in splits:
@@ -167,6 +214,8 @@ def pack_ben_nodes_h5(
                 index_subdir=resolved_index_subdir,
                 num_segments=num_segments,
                 patch_size=patch_size,
+                image_size=image_size,
+                nodes_dir_name=nodes_dir_name,
                 compression=compression,
                 max_samples=max_samples,
             )
@@ -174,43 +223,64 @@ def pack_ben_nodes_h5(
     print(f"Packed nodes saved to: {output_h5}")
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Pack BEN SLICO node .npy files into one HDF5 file.")
-    parser.add_argument("--data-root", type=str, default="/media/sata/xyx/BigEarthNet/dataset")
-    parser.add_argument("--image-size", type=int, default=256)
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Pack precomputed BEN SLICO node .npy files into one HDF5 file."
+    )
+    parser.add_argument("--data-root", type=str, default=DATA_ROOT_DEFAULT)
+    parser.add_argument("--image-size", type=int, default=128)
+    parser.add_argument("--num-segments", type=int, default=64)
+    parser.add_argument("--patch-size", type=int, default=8)
     parser.add_argument(
         "--index-subdir",
         type=str,
         default="",
-        help="optional override, e.g. processed_pt_256_clean622",
+        help="optional override, e.g. processed_pt_<image_size>_clean622",
     )
-    # parser.add_argument("--splits", type=str, nargs="+", default=["train", "val", "test"])
     parser.add_argument("--splits", type=str, nargs="+", default=["train", "val"])
-    parser.add_argument("--num-segments", type=int, default=64)
-    parser.add_argument("--patch-size", type=int, default=16)
+    parser.add_argument(
+        "--nodes-dir",
+        "--nodes-dir-name",
+        dest="nodes_dir",
+        type=str,
+        default="",
+        help=(
+            "optional nodes directory name under each split; "
+            "default: aug_nodes_slico_seg<num_segments>_patch<patch_size>_img<image_size>"
+        ),
+    )
     parser.add_argument(
         "--output-h5",
         type=str,
         default="",
-        help="default: <data-root>/ben_slico_nodes_seg{num_segments}_patch{patch_size}.h5",
+        help=(
+            "packed output path; "
+            "default: <data-root>/ben_slico_nodes_seg<num_segments>_patch<patch_size>_img<image_size>.h5"
+        ),
     )
     parser.add_argument("--compression", type=str, default="none", choices=["lzf", "gzip", "none"])
     parser.add_argument("--max-samples", type=int, default=0)
-    args = parser.parse_args()
+    return parser
+
+
+if __name__ == "__main__":
+    args = build_parser().parse_args()
 
     output_h5 = args.output_h5 or os.path.join(
-        args.data_root, f"ben_slico_nodes_seg{args.num_segments}_patch{args.patch_size}.h5"
+        args.data_root,
+        build_nodes_h5_name(args.num_segments, args.patch_size, args.image_size),
     )
     compression = None if args.compression == "none" else args.compression
 
     pack_ben_nodes_h5(
         data_root=args.data_root,
         output_h5=output_h5,
-        splits=tuple(args.splits),
         image_size=args.image_size,
-        index_subdir=args.index_subdir if args.index_subdir else None,
         num_segments=args.num_segments,
         patch_size=args.patch_size,
+        splits=tuple(args.splits),
+        index_subdir=args.index_subdir if args.index_subdir else None,
+        nodes_dir_name=args.nodes_dir if args.nodes_dir else None,
         compression=compression,
         max_samples=args.max_samples,
     )
