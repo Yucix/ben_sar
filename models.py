@@ -195,7 +195,7 @@ class DSDL(nn.Module):
     def get_config_optim(self, lr, lrp):
         return [
             {'params': self.features_opt.parameters(), 'lr': lr * lrp},
-            {'params': self.features_sar.parameters(), 'lr': lr * lrp},
+            {'params': self.features_sar.parameters(), 'lr': lr},
             {'params': self.W1, 'lr': lr},
             {'params': self.W2, 'lr': lr},
         ]
