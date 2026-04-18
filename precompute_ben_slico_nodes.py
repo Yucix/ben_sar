@@ -350,7 +350,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=128,
         help="controls default source h5 path: <data-root>/ben_10p_clean_622_<image_size>.h5",
     )
-    parser.add_argument("--num-segments", type=int, default=64)
+    parser.add_argument("--num-segments", type=int, default=32)
     parser.add_argument("--patch-size", type=int, default=8)
     parser.add_argument("--splits", type=str, nargs="+", default=["train", "val"])
     parser.add_argument(

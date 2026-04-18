@@ -54,7 +54,7 @@ class TrainingLogger:
             writer.writerow([
                 'timestamp', 'epoch', 'phase', 'loss',
                 'backbone_lr', 'semantic_lr',
-                'mAP', 'Macro_P', 'Macro_R', 'Macro_F1', 'Micro_F1',
+                'mAP', 'Macro_P', 'Macro_R', 'Macro_F1', 'Micro_F1', 'Threshold',
                 'AP_per_class', 'F1_per_class', 'epoch_time'
             ])
 
@@ -83,6 +83,7 @@ class TrainingLogger:
                 metrics.get('Macro_R', ''),
                 metrics.get('Macro_F1', ''),
                 metrics.get('Micro_F1', ''),
+                metrics.get('Threshold', ''),
                 metrics.get('AP_per_class', ''),
                 metrics.get('F1_per_class', ''),
                 f"{epoch_time:.3f}"
@@ -102,6 +103,7 @@ class TrainingLogger:
                 best_metrics.get('Macro_R', ''),
                 best_metrics.get('Macro_F1', ''),
                 best_metrics.get('Micro_F1', ''),
+                best_metrics.get('Threshold', ''),
                 best_metrics.get('AP_per_class', ''),
                 best_metrics.get('F1_per_class', ''),
                 ""
@@ -344,6 +346,7 @@ def main_os():
     print(f"Macro-F1      = {best_metrics.get('Macro_F1', 'N/A')}")
     print(f"Macro-P       = {best_metrics.get('Macro_P', 'N/A')}")
     print(f"Macro-R       = {best_metrics.get('Macro_R', 'N/A')}")
+    print(f"Threshold     = {best_metrics.get('Threshold', 'N/A')}")
     print("--------------------------------------------")
     print(f"Best model saved in: {DEFAULT_CHECKPOINT_PATH}")
     print(f"Log file saved in:   {logger.log_file}")

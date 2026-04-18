@@ -77,6 +77,8 @@ class Engine(object):
         self.state.setdefault('epochs_no_improve', 0)
         self.state.setdefault('prefetch_factor', 4)
         self.state.setdefault('val_persistent_workers', False)
+        self.state.setdefault('val_threshold_grid_size', 101)
+        self.state.setdefault('val_best_threshold', 0.5)
 
         self.state['meter_loss'] = tnt.meter.AverageValueMeter()
         self.state['batch_time'] = tnt.meter.AverageValueMeter()
@@ -102,8 +104,15 @@ class Engine(object):
         # 验证阶段：计算指标
         if not training:
             ap_meter = self.state['meter_ap']
-            
-            res = ap_meter.compute_paper_metrics(threshold=0.5)
+
+            grid_size = max(2, int(self.state.get('val_threshold_grid_size', 101)))
+            threshold_grid = np.linspace(0.0, 1.0, grid_size, dtype=np.float32)
+            best_threshold, res = ap_meter.find_best_threshold(
+                thresholds=threshold_grid,
+                metric_key="Micro_F1",
+            )
+            self.state['val_best_threshold'] = float(best_threshold)
+            self.state['last_val_metrics'] = res
             
             # 核心指标
             macro_p = res['Macro_P']
@@ -118,6 +127,7 @@ class Engine(object):
             print("\n" + "="*45)
             print(" *** Evaluation Results ***")
             print("="*45)
+            print(f" Best Threshold    : {best_threshold:.4f}")
             print(f" Micro-F1 (Target): {micro_f1:.2f} %")
             print(f" Macro-F1 (Paper F1): {macro_f1:.2f} %")
             print(f" Macro-P (Paper P)  : {macro_p:.2f} %")
@@ -134,6 +144,7 @@ class Engine(object):
                 "Macro_R": f"{macro_r:.4f}",
                 "Macro_F1": f"{macro_f1:.4f}",
                 "Micro_F1": f"{micro_f1:.4f}",
+                "Threshold": f"{best_threshold:.6f}",
                 "AP_per_class": ",".join([f"{x:.4f}" for x in ap_per_class]),
                 "F1_per_class": ",".join([f"{x:.2f}" for x in f1_per_class]),
             }
@@ -324,7 +335,13 @@ class Engine(object):
             if is_best:
                 self.state['best_score'] = score
                 self.state['best_epoch'] = epoch + 1
-                self.best_metrics = self.state['meter_ap'].compute_paper_metrics(threshold=0.5)
+                last_val_metrics = self.state.get('last_val_metrics', None)
+                if isinstance(last_val_metrics, dict) and last_val_metrics:
+                    self.best_metrics = dict(last_val_metrics)
+                else:
+                    self.best_metrics = self.state['meter_ap'].compute_paper_metrics(
+                        threshold=float(self.state.get('val_best_threshold', 0.5))
+                    )
                 epochs_no_improve = 0
                 self.state['epochs_no_improve'] = 0
                 print(f"=> New best Micro-F1: {score:.4f} at epoch {epoch + 1}")
